@@ -1,4 +1,6 @@
-use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
+use cgmath::{self, Matrix4};
+use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, CpuBufferPool};
+use vulkano::descriptor::descriptor_set::{PersistentDescriptorSet};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState};
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::framebuffer::{
@@ -98,7 +100,7 @@ fn main() {
     let vertex_buffer = {
         #[derive(Default, Debug, Clone)]
         struct Vertex {
-            position: [f32; 2],
+            position: [f32; 4],
         }
         vulkano::impl_vertex!(Vertex, position);
 
@@ -107,13 +109,13 @@ fn main() {
             BufferUsage::all(),
             [
                 Vertex {
-                    position: [-0.5, -0.25],
+                    position: [-0.5, -0.25, 0.0, 1.0],
                 },
                 Vertex {
-                    position: [0.0, 0.5],
+                    position: [0.0, 0.5, 0.0, 1.0],
                 },
                 Vertex {
-                    position: [0.25, -0.1],
+                    position: [0.25, -0.1, 0.0, 1.0],
                 },
             ]
             .iter()
@@ -121,6 +123,17 @@ fn main() {
         )
         .unwrap()
     };
+
+    let mvp_data = vs::ty::VP_BLOCK {
+        mvp: cgmath::ortho(-1.0, 1.0, 1.0, -1.0, -1.0, 1.0).into(),
+    };
+
+    let mvp_buffer = CpuBufferPool::<vs::ty::VP_BLOCK>::new(
+        device.clone(),
+        BufferUsage::all(),
+    );
+
+    let mvp_subbuffer = mvp_buffer.next(mvp_data).unwrap();
 
     mod vs {
         vulkano_shaders::shader! {
@@ -130,10 +143,16 @@ fn main() {
 
 layout (location = 0) in vec4 position;
 
-layout (set = 0, binding = 0) in mat4 mvp;
+layout (set = 0, binding = 0) uniform VP_BLOCK {
+    mat4 vp;
+} vp_inst;
+
+layout (push_constant) uniform Push {
+    mat4 model;
+} push;
 
 void main() {
-    gl_Position = mvp * position;
+    gl_Position = vp_inst.vp * position;
 }"
         }
     }
@@ -186,6 +205,15 @@ void main() {
             .build(device.clone())
             .unwrap(),
     );
+
+    let set = Arc::new(
+        PersistentDescriptorSet::start(pipeline.clone(), 0)
+            .add_buffer(mvp_subbuffer)
+            .unwrap()
+            .build()
+            .unwrap(),
+    );
+
 
     let mut dynamic_state = DynamicState {
         line_width: None,
@@ -257,7 +285,7 @@ void main() {
             pipeline.clone(),
             &dynamic_state,
             vertex_buffer.clone(),
-            (),
+            set.clone(),
             (),
         )
         .unwrap()

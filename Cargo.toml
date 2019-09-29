@@ -8,7 +8,7 @@ edition = "2018"
 
 [dependencies]
 vulkano = ""
-vulkano-shaders = ""
+vulkano-shaders = "^0.14"
 vulkano-win = ""
 cgmath = ""
 image = ""
