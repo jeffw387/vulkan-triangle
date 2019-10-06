@@ -24,8 +24,6 @@ use winit::{Event, EventsLoop, Window, WindowBuilder, WindowEvent};
 use std::sync::Arc;
 use vulkano_triangle::dbgpipe;
 
-
-
 fn main() {
     let instance = {
         let extensions = vulkano_win::required_extensions();
