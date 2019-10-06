@@ -1,15 +1,14 @@
-use cgmath::{self, Matrix4};
+use cgmath::{self};
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, CpuBufferPool};
-use vulkano::descriptor::descriptor_set::{PersistentDescriptorSet};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState};
+use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::framebuffer::{
-    Framebuffer, FramebufferAbstract, RenderPassAbstract, Subpass,
+    Framebuffer, FramebufferAbstract, RenderPassAbstract,
 };
 use vulkano::image::SwapchainImage;
 use vulkano::instance::{Instance, PhysicalDevice};
 use vulkano::pipeline::viewport::Viewport;
-use vulkano::pipeline::GraphicsPipeline;
 use vulkano::swapchain;
 use vulkano::swapchain::{
     AcquireError, PresentMode, SurfaceTransform, Swapchain,
@@ -23,6 +22,9 @@ use vulkano_win::VkSurfaceBuild;
 use winit::{Event, EventsLoop, Window, WindowBuilder, WindowEvent};
 
 use std::sync::Arc;
+use vulkano_triangle::dbgpipe;
+
+
 
 fn main() {
     let instance = {
