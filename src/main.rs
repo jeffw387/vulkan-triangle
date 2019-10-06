@@ -100,23 +100,17 @@ fn main() {
     };
 
     let vertex_buffer = {
-        #[derive(Default, Debug, Clone)]
-        struct Vertex {
-            position: [f32; 4],
-        }
-        vulkano::impl_vertex!(Vertex, position);
-
         CpuAccessibleBuffer::from_iter(
             device.clone(),
             BufferUsage::all(),
             [
-                Vertex {
+                dbgpipe::Vertex {
                     position: [-0.5, -0.25, 0.0, 1.0],
                 },
-                Vertex {
+                dbgpipe::Vertex {
                     position: [0.0, 0.5, 0.0, 1.0],
                 },
-                Vertex {
+                dbgpipe::Vertex {
                     position: [0.25, -0.1, 0.0, 1.0],
                 },
             ]
@@ -126,96 +120,26 @@ fn main() {
         .unwrap()
     };
 
-    let mvp_data = vs::ty::VP_BLOCK {
-        mvp: cgmath::ortho(-1.0, 1.0, 1.0, -1.0, -1.0, 1.0).into(),
+    let vp_data = dbgpipe::vs::ty::VP_BLOCK {
+        vp: cgmath::ortho(-5.0, 5.0, 5.0, -5.0, -1.0, 1.0).into(),
     };
 
-    let mvp_buffer = CpuBufferPool::<vs::ty::VP_BLOCK>::new(
+    let vp_buffer = CpuBufferPool::<dbgpipe::vs::ty::VP_BLOCK>::new(
         device.clone(),
         BufferUsage::all(),
     );
 
-    let mvp_subbuffer = mvp_buffer.next(mvp_data).unwrap();
+    let vp_subbuffer = vp_buffer.next(vp_data).unwrap();
 
-    mod vs {
-        vulkano_shaders::shader! {
-            ty: "vertex",
-            src: "
-#version 450
-
-layout (location = 0) in vec4 position;
-
-layout (set = 0, binding = 0) uniform VP_BLOCK {
-    mat4 vp;
-} vp_inst;
-
-layout (push_constant) uniform Push {
-    mat4 model;
-} push;
-
-void main() {
-    gl_Position = vp_inst.vp * position;
-}"
-        }
-    }
-
-    mod fs {
-        vulkano_shaders::shader! {
-            ty: "fragment",
-            src: "
-#version 450
-
-layout (location = 0) out vec4 f_color;
-
-void main() {
-    f_color = vec4(1.0, 0.0, 0.0, 1.0);
-}
-"
-        }
-    }
-
-    let vs = vs::Shader::load(device.clone()).unwrap();
-    let fs = fs::Shader::load(device.clone()).unwrap();
-
-    let render_pass = Arc::new(
-        vulkano::single_pass_renderpass!(
-            device.clone(),
-            attachments: {
-                color: {
-                    load: Clear,
-                    store: Store,
-                    format: swapchain.format(),
-                    samples: 1,
-                }
-            },
-            pass: {
-                color: [color],
-                depth_stencil: {}
-            }
-        )
-        .unwrap(),
-    );
-
-    let pipeline = Arc::new(
-        GraphicsPipeline::start()
-            .vertex_input_single_buffer()
-            .vertex_shader(vs.main_entry_point(), ())
-            .triangle_list()
-            .viewports_dynamic_scissors_irrelevant(1)
-            .fragment_shader(fs.main_entry_point(), ())
-            .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-            .build(device.clone())
-            .unwrap(),
-    );
+    let debug_pipeline = dbgpipe::build(device.clone(), swapchain.clone());
 
     let set = Arc::new(
-        PersistentDescriptorSet::start(pipeline.clone(), 0)
-            .add_buffer(mvp_subbuffer)
+        PersistentDescriptorSet::start(debug_pipeline.pipeline.clone(), 0)
+            .add_buffer(vp_subbuffer)
             .unwrap()
             .build()
             .unwrap(),
     );
-
 
     let mut dynamic_state = DynamicState {
         line_width: None,
@@ -225,7 +149,7 @@ void main() {
 
     let mut framebuffers = window_size_dependent_setup(
         &images,
-        render_pass.clone(),
+        debug_pipeline.render_pass.clone(),
         &mut dynamic_state,
     );
 
@@ -257,7 +181,7 @@ void main() {
             swapchain = new_swapchain;
             framebuffers = window_size_dependent_setup(
                 &new_images,
-                render_pass.clone(),
+                debug_pipeline.render_pass.clone(),
                 &mut dynamic_state,
             );
 
@@ -284,9 +208,9 @@ void main() {
         .begin_render_pass(framebuffers[image_num].clone(), false, clear_values)
         .unwrap()
         .draw(
-            pipeline.clone(),
+            debug_pipeline.pipeline.clone(),
             &dynamic_state,
-            vertex_buffer.clone(),
+            vec![vertex_buffer.clone()],
             set.clone(),
             (),
         )
