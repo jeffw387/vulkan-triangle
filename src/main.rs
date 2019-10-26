@@ -1,4 +1,4 @@
-use cgmath::{self};
+use cgmath;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, CpuBufferPool};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState};
 use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
@@ -19,7 +19,9 @@ use vulkano::sync::{FlushError, GpuFuture};
 
 use vulkano_win::VkSurfaceBuild;
 
-use winit::{Event, EventsLoop, Window, WindowBuilder, WindowEvent};
+use winit::event::{Event, WindowEvent};
+use winit::event_loop::{ControlFlow, EventLoop};
+use winit::window::{Window, WindowBuilder};
 
 use std::sync::Arc;
 use vulkano_triangle::dbgpipe;
@@ -38,7 +40,7 @@ fn main() {
         physical.ty()
     );
 
-    let mut events_loop = EventsLoop::new();
+    let events_loop = EventLoop::new();
     let surface = WindowBuilder::new()
         .build_vk_surface(&events_loop, instance.clone())
         .unwrap();
@@ -70,14 +72,12 @@ fn main() {
         let usage = caps.supported_usage_flags;
         let alpha = caps.supported_composite_alpha.iter().next().unwrap();
         let format = caps.supported_formats[0].0;
-        let initial_dimensions =
-            if let Some(dimensions) = window.get_inner_size() {
-                let dimensions: (u32, u32) =
-                    dimensions.to_physical(window.get_hidpi_factor()).into();
-                [dimensions.0, dimensions.1]
-            } else {
-                return;
-            };
+        let initial_dimensions = {
+            let dimensions = window.inner_size();
+            let dimensions: (u32, u32) =
+                dimensions.to_physical(window.hidpi_factor()).into();
+            [dimensions.0, dimensions.1]
+        };
 
         Swapchain::new(
             device.clone(),
@@ -154,25 +154,32 @@ fn main() {
     let mut recreate_swapchain = false;
 
     let mut previous_frame_end =
-        Box::new(sync::now(device.clone())) as Box<dyn GpuFuture>;
+        Some(Box::new(sync::now(device.clone())) as Box<dyn GpuFuture>);
 
-    loop {
-        previous_frame_end.cleanup_finished();
+    events_loop.run(move |ev, _, control_flow| {
+        *control_flow = ControlFlow::Poll;
+        let window = surface.window();
 
+        previous_frame_end.as_mut().unwrap().cleanup_finished();
+        match ev {
+    Event::EventsCleared => {
+                window.request_redraw();
+            }
+            Event::WindowEvent {
+                event: WindowEvent::RedrawRequested,
+                ..
+            } => {
         if recreate_swapchain {
-            let dimensions = if let Some(dimensions) = window.get_inner_size() {
-                let dimensions: (u32, u32) =
-                    dimensions.to_physical(window.get_hidpi_factor()).into();
-                [dimensions.0, dimensions.1]
-            } else {
-                return;
-            };
+            let dimensions = window.inner_size();
+            let dimensions: (u32, u32) =
+                dimensions.to_physical(window.hidpi_factor()).into();
+            let dimensions = [dimensions.0, dimensions.1];
 
             let (new_swapchain, new_images) = match swapchain
                 .recreate_with_dimension(dimensions)
             {
                 Ok(r) => r,
-                Err(SwapchainCreationError::UnsupportedDimensions) => continue,
+                Err(SwapchainCreationError::UnsupportedDimensions) => return,
                 Err(err) => panic!("{:?}", err),
             };
 
@@ -191,7 +198,7 @@ fn main() {
                 Ok(r) => r,
                 Err(AcquireError::OutOfDate) => {
                     recreate_swapchain = true;
-                    continue;
+                    return;
                 }
                 Err(err) => panic!("{:?}", err),
             };
@@ -209,8 +216,8 @@ fn main() {
             debug_pipeline.pipeline.clone(),
             &dynamic_state,
             vec![vertex_buffer.clone()],
-            set.clone(),
-            (),
+            vec![set.clone()],
+            ()
         )
         .unwrap()
         .end_render_pass()
@@ -218,7 +225,9 @@ fn main() {
         .build()
         .unwrap();
 
-        let future = previous_frame_end
+        let prev = previous_frame_end.take();
+
+        let future = prev.unwrap()
             .join(acquire_future)
             .then_execute(queue.clone(), command_buffer)
             .unwrap()
@@ -227,36 +236,35 @@ fn main() {
 
         match future {
             Ok(future) => {
-                previous_frame_end = Box::new(future) as Box<_>;
+                future.wait(None).unwrap();
+                previous_frame_end = Some(Box::new(future) as Box<_>);
             }
             Err(FlushError::OutOfDate) => {
                 recreate_swapchain = true;
                 previous_frame_end =
-                    Box::new(sync::now(device.clone())) as Box<_>;
+                    Some(Box::new(sync::now(device.clone())) as Box<_>);
             }
             Err(e) => {
                 eprintln!("{:?}", e);
                 previous_frame_end =
-                    Box::new(sync::now(device.clone())) as Box<_>;
+                    Some(Box::new(sync::now(device.clone())) as Box<_>);
             }
         }
 
-        let mut done = false;
-        events_loop.poll_events(|ev| match ev {
+            }
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
                 ..
-            } => done = true,
+            } => {
+                *control_flow = ControlFlow::Exit;
+            }
             Event::WindowEvent {
                 event: WindowEvent::Resized(_),
                 ..
             } => recreate_swapchain = true,
             _ => (),
-        });
-        if done {
-            return;
         }
-    }
+    });
 }
 
 fn window_size_dependent_setup(

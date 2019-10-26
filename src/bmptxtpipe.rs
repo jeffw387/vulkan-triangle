@@ -5,7 +5,7 @@ use vulkano::framebuffer::Subpass;
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::pipeline::GraphicsPipelineAbstract;
 use vulkano::swapchain::Swapchain;
-use winit::Window;
+use winit::window::Window;
 
 #[derive(Debug, Clone, Default)]
 pub struct Vertex {
